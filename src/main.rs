@@ -138,8 +138,8 @@ fn parse_message(message: String) -> Vec<Command> {
                 if !parsed_keyword {
                     let w = word.unwrap().to_uppercase();
                     keyword = match w.as_str() {
-                        "SET" => ReservedKeys::ECHO,
-                        "GET" => ReservedKeys::ECHO,
+                        "SET" => ReservedKeys::SET,
+                        "GET" => ReservedKeys::GET,
                         "PING" => ReservedKeys::PING,
                         "ECHO" => ReservedKeys::ECHO,
                         _ => ReservedKeys::UNKNOWN,
