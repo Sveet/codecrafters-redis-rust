@@ -29,10 +29,24 @@ fn main() {
 
         let mut disconnected: Vec<usize> = vec![];
         for (i, client) in clients.iter_mut().enumerate() {
-            let mut buf = [0; 512];
+            let mut buf = vec![0; 255];
             match client.read(&mut buf) {
                 Ok(_) => {
-                    handle_stream(client);
+                    let message = String::from_utf8(buf).unwrap();
+                    for command in parse_message(message) {
+                        match command.keyword {
+                            ReservedKeys::PING => {
+                                let _ = client.write("+PONG\r\n".as_bytes());
+                            }
+                            ReservedKeys::ECHO => {
+                                if let Some(resp) = command.args.first() {
+                                    let response = format!("+{resp}\r\n");
+                                    let _ = client.write(response.as_bytes());
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
                 }
                 Err(e) => {
                     if e.kind() == ErrorKind::WouldBlock {
@@ -50,8 +64,80 @@ fn main() {
         }
     }
 }
+struct Command {
+    keyword: ReservedKeys,
+    args: Vec<String>,
+}
+enum ReservedKeys {
+    ECHO,
+    PING,
+    UNKNOWN,
+}
 
-fn handle_stream(stream: &mut TcpStream) {
-    let response = "+PONG\r\n".as_bytes();
-    let _ = stream.write(response);
+fn parse_message(message: String) -> Vec<Command> {
+    let mut chunks = message.split("\r\n");
+    let mut commands = Vec::<Command>::new();
+    let mut arr_len: u32 = 1;
+    let mut parsed_keyword = false;
+
+    loop {
+        let mut chunk = match chunks.next() {
+            None => break,
+            Some(chunk) => chunk,
+        };
+        let mut word: Option<&str> = None;
+        let mut keyword = ReservedKeys::UNKNOWN;
+        let mut args = Vec::<String>::new();
+
+        while arr_len > 0 {
+            let first_char = match chunk.chars().next() {
+                Some(c) => c,
+                None => break,
+            };
+            match first_char {
+                '*' => {
+                    arr_len = parse_number(chunk, '*') + 1;
+                }
+                '$' => {
+                    let _ = parse_number(chunk, '$');
+                    word = chunks.next();
+                }
+                _ => word = Some(chunk),
+            }
+
+            if word.is_some() {
+                if !parsed_keyword {
+                    let w = word.unwrap().to_uppercase();
+                    keyword = match w.as_str() {
+                        "PING" => ReservedKeys::PING,
+                        "ECHO" => ReservedKeys::ECHO,
+                        _ => ReservedKeys::UNKNOWN,
+                    };
+                    parsed_keyword = true;
+                } else {
+                    if let Some(word) = word {
+                        args.push(word.to_string());
+                    }
+                }
+            }
+
+            chunk = match chunks.next() {
+                None => break,
+                Some(c) => c,
+            };
+            arr_len -= 1;
+        }
+        let command = Command { keyword, args };
+        commands.push(command);
+    }
+    return commands;
+}
+
+fn parse_number(chunk: &str, key: char) -> u32 {
+    return chunk
+        .chars()
+        .nth(1)
+        .expect(format!("expected value to follow {:?}", key).as_str())
+        .to_digit(10)
+        .expect(format!("expected numeric value to follow {:?}", key).as_str());
 }
