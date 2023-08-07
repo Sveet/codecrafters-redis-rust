@@ -35,8 +35,10 @@ fn main() {
             match client.read(&mut buf) {
                 Ok(_) => {
                     let message = String::from_utf8(buf).unwrap();
+                    let message_copy = message.clone();
                     for command in parse_message(message) {
                         println!("command: {:#?}", command);
+                        println!("raw message: {}", message_copy);
                         match command.keyword {
                             ReservedKeys::PING => {
                                 let _ = client.write("+PONG\r\n".as_bytes());
@@ -136,10 +138,10 @@ fn parse_message(message: String) -> Vec<Command> {
                 if !parsed_keyword {
                     let w = word.unwrap().to_uppercase();
                     keyword = match w.as_str() {
-                        "PING" => ReservedKeys::PING,
-                        "ECHO" => ReservedKeys::ECHO,
                         "SET" => ReservedKeys::ECHO,
                         "GET" => ReservedKeys::ECHO,
+                        "PING" => ReservedKeys::PING,
+                        "ECHO" => ReservedKeys::ECHO,
                         _ => ReservedKeys::UNKNOWN,
                     };
                     parsed_keyword = true;
