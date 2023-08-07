@@ -36,6 +36,7 @@ fn main() {
                 Ok(_) => {
                     let message = String::from_utf8(buf).unwrap();
                     for command in parse_message(message) {
+                        println!("command: {:#?}", command);
                         match command.keyword {
                             ReservedKeys::PING => {
                                 let _ = client.write("+PONG\r\n".as_bytes());
@@ -50,7 +51,9 @@ fn main() {
                                 let key = command.args[0].to_owned();
                                 let value = command.args[1].to_owned();
                                 storage.insert(key, value);
-                                let _ = client.write(format!("+OK\r\n").as_bytes());
+                                let _ = client
+                                    .write(format!("+OK\r\n").as_bytes())
+                                    .expect("couldn't write response");
                             }
                             ReservedKeys::GET => {
                                 let key = command.args[0].to_owned();
@@ -82,12 +85,14 @@ fn main() {
         }
     }
 }
+#[derive(Debug)]
 struct Command {
     keyword: ReservedKeys,
     args: Vec<String>,
 }
 
 #[allow(dead_code)]
+#[derive(Debug)]
 enum ReservedKeys {
     ECHO,
     PING,
