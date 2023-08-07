@@ -86,12 +86,14 @@ struct Command {
     keyword: ReservedKeys,
     args: Vec<String>,
 }
+
+#[allow(dead_code)]
 enum ReservedKeys {
     ECHO,
     PING,
-    UNKNOWN,
     SET,
     GET,
+    UNKNOWN,
 }
 
 fn parse_message(message: String) -> Vec<Command> {
