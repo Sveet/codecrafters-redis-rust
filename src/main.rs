@@ -2,10 +2,11 @@ use std::{
     collections::HashMap,
     io::{ErrorKind, Read, Write},
     net::{TcpListener, TcpStream},
+    time::{Duration, Instant},
 };
 
 fn main() {
-    let mut storage = HashMap::<String, String>::new();
+    let mut storage = HashMap::<String, ValueWithExpiry>::new();
     let mut clients: Vec<TcpStream> = vec![];
     let listener = TcpListener::bind("127.0.0.1:6379").unwrap();
     listener
@@ -51,7 +52,22 @@ fn main() {
                             }
                             ReservedKeys::SET => {
                                 let key = command.args[0].to_owned();
-                                let value = command.args[1].to_owned();
+                                let value: ValueWithExpiry;
+                                if command.args.len() == 4 {
+                                    value = ValueWithExpiry {
+                                        value: command.args[1].to_owned(),
+                                        insert_time: Instant::now(),
+                                        expiry: Some(Duration::from_millis(
+                                            command.args[3].parse::<u64>().unwrap(),
+                                        )),
+                                    }
+                                } else {
+                                    value = ValueWithExpiry {
+                                        value: command.args[1].to_owned(),
+                                        insert_time: Instant::now(),
+                                        expiry: None,
+                                    }
+                                }
                                 storage.insert(key, value);
                                 let _ = client
                                     .write(format!("+OK\r\n").as_bytes())
@@ -61,7 +77,19 @@ fn main() {
                                 let key = command.args[0].to_owned();
                                 let value = storage.get(&key);
                                 if let Some(value) = value {
-                                    let resp = format!("+{value}\r\n");
+                                    if value.expiry.is_some()
+                                        && value.insert_time + value.expiry.unwrap()
+                                            < Instant::now()
+                                    {
+                                        println!(
+                                            "Expiring cache for {:?} with value {:?}",
+                                            key, value
+                                        );
+                                        storage.remove(&key);
+                                        let _ = client.write(b"$-1\r\n");
+                                        return;
+                                    }
+                                    let resp = format!("+{}\r\n", value.value);
                                     let _ = client
                                         .write(resp.as_bytes())
                                         .expect("couldn't write response");
@@ -93,7 +121,6 @@ struct Command {
     args: Vec<String>,
 }
 
-#[allow(dead_code)]
 #[derive(Debug)]
 enum ReservedKeys {
     ECHO,
@@ -101,6 +128,13 @@ enum ReservedKeys {
     SET,
     GET,
     UNKNOWN,
+}
+
+#[derive(Clone, Debug)]
+pub struct ValueWithExpiry {
+    pub value: String,
+    pub expiry: Option<Duration>,
+    pub insert_time: Instant,
 }
 
 fn parse_message(message: String) -> Vec<Command> {
